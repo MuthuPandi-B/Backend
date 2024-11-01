@@ -98,12 +98,12 @@ export const forgotPassword = async (req, res) => {
 
 // reset password
 export const resetPassword = async (req, res) => {
-  const { token } = req.params;
+  const { resetToken } = req.params;
   const { password } = req.body;
 
   try {
     const user = await User.findOne({
-      resetPasswordToken: token,
+      resetPasswordToken: resetToken,
       resetPasswordExpires: { $gt: Date.now() }, // Check if token is not expired
     });
 
