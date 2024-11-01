@@ -3,24 +3,23 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
+import crypto from "crypto";
 dotenv.config();
 
+// Register User
 export const registerUser = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
     const hashPassword = await bcrypt.hash(password, 10);
-    //console.log(hashPassword);
     const newUser = new User({ name, email, password: hashPassword, role });
     await newUser.save();
-    res
-      .status(200)
-      .json({ message: "User Registered Successfully", data: newUser });
+    res.status(200).json({ message: "User Registered Successfully", data: newUser });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-//login user || signin
+// Login User
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -33,23 +32,16 @@ export const loginUser = async (req, res) => {
       return res.status(400).json({ message: "Invalid Password" });
     }
 
-    const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
-    });
+    const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
     user.token = token;
     await user.save();
-    res
-      .status(200)
-      .json({ message: "User Logged In Successfully", token: token });
+    res.status(200).json({ message: "User Logged In Successfully", token: token });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// forgot password
-import crypto from "crypto";
-
-
+// Forgot Password
 export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -66,6 +58,10 @@ export const forgotPassword = async (req, res) => {
     user.resetPasswordExpires = Date.now() + 3600000; // 1 hour expiration
     await user.save();
 
+    console.log("Generated resetToken:", resetToken);
+    console.log("Stored resetPasswordToken:", user.resetPasswordToken);
+    console.log("Stored resetPasswordExpires:", new Date(user.resetPasswordExpires));
+
     const transporter = nodemailer.createTransport({
       service: "Gmail",
       auth: {
@@ -73,6 +69,7 @@ export const forgotPassword = async (req, res) => {
         pass: process.env.PASS_KEY,
       },
     });
+
     const mailOptions = {
       from: process.env.PASS_MAIL,
       to: user.email,
@@ -81,22 +78,23 @@ export const forgotPassword = async (req, res) => {
       Please click the following link or paste it into your browser to complete the process:
       https://passwordreset.netlify.app/reset-password/${resetToken}`,
     };
+
     transporter.sendMail(mailOptions, function (error, info) {
       if (error) {
-        console.log(error);
-        res
-          .status(500)
-          .json({ message: "Internal server error in sending the mail" });
+        console.log("Error sending email:", error);
+        res.status(500).json({ message: "Internal server error in sending the mail" });
       } else {
+        console.log("Email sent successfully:", info.response);
         res.status(200).json({ message: "Email Sent Successfully" });
       }
     });
   } catch (error) {
+    console.log("Error in forgotPassword:", error);
     res.status(500).json({ message: error.message });
   }
 };
 
-// reset password
+// Reset Password
 export const resetPassword = async (req, res) => {
   const { resetToken } = req.params;
   const { password } = req.body;
@@ -108,6 +106,7 @@ export const resetPassword = async (req, res) => {
     });
 
     if (!user) {
+      console.log("No user found with this token or token expired.");
       return res.status(400).json({ message: "Invalid or expired token" });
     }
 
@@ -120,6 +119,7 @@ export const resetPassword = async (req, res) => {
 
     res.status(200).json({ message: "Password reset successful" });
   } catch (error) {
+    console.log("Error in resetPassword:", error);
     res.status(500).json({ message: error.message });
   }
 };
