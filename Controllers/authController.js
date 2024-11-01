@@ -47,6 +47,9 @@ export const loginUser = async (req, res) => {
 };
 
 // forgot password
+import crypto from "crypto";
+
+
 export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -54,11 +57,16 @@ export const forgotPassword = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User Not Found" });
     }
-    const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
-    });
+
+    // Generate a random token
+    const resetToken = crypto.randomBytes(32).toString("hex");
+
+    // Set the reset token and expiration in the user document
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour expiration
+    await user.save();
+
     const transporter = nodemailer.createTransport({
-      //Gmail or yahoo or outlook
       service: "Gmail",
       auth: {
         user: process.env.PASS_MAIL,
@@ -69,9 +77,9 @@ export const forgotPassword = async (req, res) => {
       from: process.env.PASS_MAIL,
       to: user.email,
       subject: "Password Reset Link",
-      text: `You are receiving this because you have requested the reset of the password for your account 
-      Please click the following link or paste it into your browser to complete the process
-      https://localhost:5173/reset-password/${user._id}/${token}`,
+      text: `You are receiving this because you have requested the reset of the password for your account.
+      Please click the following link or paste it into your browser to complete the process:
+      https://passwordreset.netlify.app/reset-password/${resetToken}`,
     };
     transporter.sendMail(mailOptions, function (error, info) {
       if (error) {
@@ -88,21 +96,30 @@ export const forgotPassword = async (req, res) => {
   }
 };
 
+// reset password
 export const resetPassword = async (req, res) => {
-  const { id, token } = req.params;
+  const { token } = req.params;
   const { password } = req.body;
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(400).json({ message: "Invalid Token" });
-    } else {
-      bcrypt
-        .hash(password, 10)
-        .then((hash) => {
-          User.findByIdAndUpdate({ _id: id }, { password: hash })
-            .then((ele) => res.send({ status: "Success" }))
-            .catch((err) => res.send({ status: err }));
-        })
-        .catch((err) => res.send({ status: err }));
+
+  try {
+    const user = await User.findOne({
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() }, // Check if token is not expired
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired token" });
     }
-  });
+
+    // Hash the new password and update the user
+    const hashedPassword = await bcrypt.hash(password, 10);
+    user.password = hashedPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined; // Clear the reset fields
+    await user.save();
+
+    res.status(200).json({ message: "Password reset successful" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
