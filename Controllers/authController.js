@@ -80,7 +80,6 @@ export const forgotPassword = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 export const resetPassword = async (req, res) => {
   const { token } = req.params;
   const { password } = req.body;
@@ -108,6 +107,8 @@ export const resetPassword = async (req, res) => {
 
     res.send({ status: "Success" });
   } catch (err) {
+    console.error("Error during password reset:", err);
     res.send({ status: err.message });
   }
 };
+
