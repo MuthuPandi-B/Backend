@@ -48,7 +48,7 @@ export const forgotPassword = async (req, res) => {
     const resetToken = crypto.randomBytes(32).toString("hex");
     const hashedToken = await bcrypt.hash(resetToken, 10);
 
-    user.resetPasswordToken = hashedToken;
+    user.resetPasswordToken = hashedToken; // Save the hashed token in DB
     user.resetPasswordExpires = Date.now() + 3600000; // 1 hour expiration
     await user.save();
 
@@ -79,6 +79,8 @@ export const forgotPassword = async (req, res) => {
   }
 };
 
+
+
 // Reset Password
 export const resetPassword = async (req, res) => {
   const { resetToken } = req.params; // This is your plain token from the URL
@@ -87,7 +89,8 @@ export const resetPassword = async (req, res) => {
   try {
       // Find the user with the reset token and ensure it hasn’t expired
       const user = await User.findOne({
-          resetPasswordExpires: { $gt: Date.now() },
+          resetPasswordToken: { $exists: true }, // Check if token exists
+          resetPasswordExpires: { $gt: Date.now() }, // Check if token hasn't expired
       });
 
       console.log("User retrieved:", user);
