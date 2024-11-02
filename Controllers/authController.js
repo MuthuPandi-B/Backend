@@ -81,29 +81,40 @@ export const forgotPassword = async (req, res) => {
 
 // Reset Password
 export const resetPassword = async (req, res) => {
-  const { resetToken } = req.params;
+  const { resetToken } = req.params; // This is your plain token from the URL
   const { password } = req.body;
 
   try {
-    // Find the user with the hashed token and ensure it hasn’t expired
-    const user = await User.findOne({
-      resetPasswordExpires: { $gt: Date.now() },
-    });
+      // Find the user with the reset token and ensure it hasn’t expired
+      const user = await User.findOne({
+          resetPasswordExpires: { $gt: Date.now() },
+      });
 
-    if (!user || !(await bcrypt.compare(resetToken, user.resetPasswordToken))) {
-      return res.status(400).json({ message: "Invalid or expired token" });
-    }
+      console.log("User retrieved:", user);
 
-    // Hash the new password and save it
-    const hashedPassword = await bcrypt.hash(password, 10);
-    user.password = hashedPassword;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
-    await user.save();
+      if (!user) {
+          return res.status(400).json({ message: "Invalid or expired token" });
+      }
 
-    res.status(200).json({ message: "Password reset successful" });
+      // Compare the plain reset token with the hashed one
+      const isTokenValid = await bcrypt.compare(resetToken, user.resetPasswordToken);
+      console.log("Is token valid?", isTokenValid);
+
+      if (!isTokenValid) {
+          return res.status(400).json({ message: "Invalid or expired token" });
+      }
+
+      // Hash the new password and save it
+      const hashedPassword = await bcrypt.hash(password, 10);
+      user.password = hashedPassword;
+      user.resetPasswordToken = undefined; // Clear token
+      user.resetPasswordExpires = undefined; // Clear expiration
+
+      await user.save();
+      res.status(200).json({ message: "Password reset successful" });
+
   } catch (error) {
-    console.error("Error:", error);
-    res.status(500).json({ message: "Server error" });
+      console.error("Error:", error);
+      res.status(500).json({ message: "Server error" });
   }
 };
