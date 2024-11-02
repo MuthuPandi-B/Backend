@@ -14,7 +14,9 @@ export const registerUser = async (req, res) => {
     const hashPassword = await bcrypt.hash(password, 10);
     const newUser = new User({ name, email, password: hashPassword, role });
     await newUser.save();
-    res.status(200).json({ message: "User Registered Successfully", data: newUser });
+    res
+      .status(200)
+      .json({ message: "User Registered Successfully", data: newUser });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -28,16 +30,17 @@ export const loginUser = async (req, res) => {
     if (!user) return res.status(404).json({ message: "User Not Found" });
 
     const passwordMatch = await bcrypt.compare(password, user.password);
-    if (!passwordMatch) return res.status(400).json({ message: "Invalid Password" });
+    if (!passwordMatch)
+      return res.status(400).json({ message: "Invalid Password" });
 
-    const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
+    const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "1h",
+    });
     res.status(200).json({ message: "User Logged In Successfully", token });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
-
-
 
 export const forgotPassword = async (req, res) => {
   try {
@@ -46,7 +49,7 @@ export const forgotPassword = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User Not Found" });
     }
-    const resetToken = crypto.randomBytes(20).toString('hex');
+    const resetToken = crypto.randomBytes(20).toString("hex");
     const hashedResetToken = await bcrypt.hash(resetToken, 10);
 
     user.resetPasswordToken = hashedResetToken;
@@ -64,14 +67,22 @@ export const forgotPassword = async (req, res) => {
       from: process.env.PASS_MAIL,
       to: user.email,
       subject: "Password Reset Link",
-      text: `You are receiving this because you have requested the reset of the password for your account. 
-      Please click the following link or paste it into your browser to complete the process:
-     https://passwordreset.netlify.app/reset-password/${resetToken}`,
+      text: `Dear ${user.name}
+          We received a request to reset your password for your account. 
+             Please click the link below to set a new password. 
+            This link is only valid for the next hour:
+      https://passwordreset.netlify.app/reset-password/${resetToken}
+      If you didn’t request this, you can ignore this email. Your password will remain unchanged.
+
+    Thank you,
+    The Password Reset Team`,
     };
     transporter.sendMail(mailOptions, function (error, info) {
       if (error) {
         console.log(error);
-        res.status(500).json({ message: "Internal server error in sending the mail" });
+        res
+          .status(500)
+          .json({ message: "Internal server error in sending the mail" });
       } else {
         res.status(200).json({ message: "Email Sent Successfully" });
       }
@@ -88,9 +99,10 @@ export const resetPassword = async (req, res) => {
   try {
     const user = await User.findOne({
       resetPasswordToken: { $exists: true },
-      resetPasswordExpires: { $gt: Date.now() }
+      resetPasswordExpires: { $gt: Date.now() },
     });
-    if (!user) return res.status(400).json({ message: "Invalid or expired token" });
+    if (!user)
+      return res.status(400).json({ message: "Invalid or expired token" });
 
     const isMatch = await bcrypt.compare(resetToken, user.resetPasswordToken);
     if (!isMatch) return res.status(400).json({ message: "Invalid Token" });
@@ -106,4 +118,3 @@ export const resetPassword = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
