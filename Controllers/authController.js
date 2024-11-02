@@ -100,52 +100,41 @@ export const forgotPassword = async (req, res) => {
 
 
 
+
+
 export const resetPassword = async (req, res) => {
-  const { id, token } = req.params;
+  const { resetToken } = req.params; // Single reset token parameter
   const { password } = req.body;
 
   try {
-    // Step 1: Verify the token using the secret key
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log("Token decoded successfully:", decoded);
+    // Verify the reset token
+    const decoded = jwt.verify(resetToken, process.env.JWT_SECRET);
+    console.log("Decoded token:", decoded);
 
-    // Step 2: Check if the user exists in the database with the specified id and token
+    // Find the user by resetToken and make sure it hasn’t expired
     const user = await User.findOne({
-      _id: id,
-      resetPasswordToken: token,
+      resetPasswordToken: resetToken,
       resetPasswordExpires: { $gt: Date.now() }
     });
 
-    // Log the user data if found or error if not found
     if (!user) {
-      console.log("No matching user found or token expired");
       return res.status(400).json({ message: "Invalid or expired token" });
     }
-    console.log("User found:", user);
 
-    // Step 3: Hash the new password
+    // Hash the new password and save it
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Step 4: Update the user's password and clear reset token fields
     user.password = hashedPassword;
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
 
-    // Save the updated user data
     await user.save();
-    console.log("Password reset successfully");
-
-    // Send success response
     res.status(200).json({ message: "Password reset successful" });
 
   } catch (error) {
-    // Log specific error for debugging
-    console.error("Error during reset:", error);
-    
+    console.error("Error:", error);
     if (error.name === "JsonWebTokenError" || error.name === "TokenExpiredError") {
       return res.status(400).json({ message: "Invalid or expired token" });
     }
     res.status(500).json({ message: "Server error" });
   }
 };
-
