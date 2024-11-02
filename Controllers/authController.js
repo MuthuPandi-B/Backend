@@ -37,23 +37,22 @@ export const loginUser = async (req, res) => {
   }
 };
 
-// Forgot Password
+import crypto from "crypto";
+
 export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User Not Found" });
+    if (!user) {
+      return res.status(404).json({ message: "User Not Found" });
+    }
+    const resetToken = crypto.randomBytes(20).toString('hex');
+    const hashedResetToken = await bcrypt.hash(resetToken, 10);
 
-    // Generate a random reset token
-    const resetToken = crypto.randomBytes(32).toString("hex");
-    const hashedToken = await bcrypt.hash(resetToken, 10);
-
-    user.resetPasswordToken = hashedToken; // Save the hashed token in DB
-    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour expiration
+    user.resetPasswordToken = hashedResetToken;
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour from now
     await user.save();
 
-    // Send reset link with the plain reset token in the URL
-    const resetLink = `https://passwordreset.netlify.app/reset-password/${resetToken}`;
     const transporter = nodemailer.createTransport({
       service: "Gmail",
       auth: {
@@ -65,59 +64,50 @@ export const forgotPassword = async (req, res) => {
       from: process.env.PASS_MAIL,
       to: user.email,
       subject: "Password Reset Link",
-      text: `You are receiving this because you have requested the reset of the password for your account. Please click the following link or paste it into your browser to complete the process: ${resetLink}`,
+      text: `You are receiving this because you have requested the reset of the password for your account. 
+      Please click the following link or paste it into your browser to complete the process:
+      https://https://passwordreset.netlify.app/reset-password/${resetToken}`,
     };
-    transporter.sendMail(mailOptions, (error, info) => {
+    transporter.sendMail(mailOptions, function (error, info) {
       if (error) {
         console.log(error);
-        return res.status(500).json({ message: "Internal server error in sending the mail" });
+        res.status(500).json({ message: "Internal server error in sending the mail" });
+      } else {
+        res.status(200).json({ message: "Email Sent Successfully" });
       }
-      res.status(200).json({ message: "Email Sent Successfully" });
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-
-
-// Reset Password
 export const resetPassword = async (req, res) => {
-  const { resetToken } = req.params; // This is your plain token from the URL
+  const { token } = req.params;
   const { password } = req.body;
 
   try {
-      // Find the user with the reset token and ensure it hasn’t expired
-      const user = await User.findOne({
-          resetPasswordToken: { $exists: true }, // Check if token exists
-          resetPasswordExpires: { $gt: Date.now() }, // Check if token hasn't expired
-      });
+    const user = await User.findOne({
+      resetPasswordToken: { $exists: true },
+      resetPasswordExpires: { $gt: Date.now() }
+    });
 
-      console.log("User retrieved:", user);
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
 
-      if (!user) {
-          return res.status(400).json({ message: "Invalid or expired token" });
-      }
+    const isMatch = await bcrypt.compare(token, user.resetPasswordToken);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid Token" });
+    }
 
-      // Compare the plain reset token with the hashed one
-      const isTokenValid = await bcrypt.compare(resetToken, user.resetPasswordToken);
-      console.log("Is token valid?", isTokenValid);
+    const hashedPassword = await bcrypt.hash(password, 10);
+    user.password = hashedPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
 
-      if (!isTokenValid) {
-          return res.status(400).json({ message: "Invalid or expired token" });
-      }
-
-      // Hash the new password and save it
-      const hashedPassword = await bcrypt.hash(password, 10);
-      user.password = hashedPassword;
-      user.resetPasswordToken = undefined; // Clear token
-      user.resetPasswordExpires = undefined; // Clear expiration
-
-      await user.save();
-      res.status(200).json({ message: "Password reset successful" });
-
-  } catch (error) {
-      console.error("Error:", error);
-      res.status(500).json({ message: "Server error" });
+    res.send({ status: "Success" });
+  } catch (err) {
+    res.send({ status: err.message });
   }
 };
