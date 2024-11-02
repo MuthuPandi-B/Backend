@@ -97,39 +97,41 @@ export const forgotPassword = async (req, res) => {
 };
 
 // reset password
+
+
 export const resetPassword = async (req, res) => {
   const { id, token } = req.params;
   const { password } = req.body;
 
   try {
-    // Verify the token
-    jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
-      if (err) {
-        return res.status(400).json({ message: "Invalid or expired token" });
-      }
-
-      // Find the user with matching token and ensure it hasn't expired
-      const user = await User.findOne({
-        _id: id,
-        resetPasswordToken: token,
-        resetPasswordExpires: { $gt: Date.now() } // Check if token is not expired
-      });
-
-      if (!user) {
-        return res.status(400).json({ message: "Invalid or expired token" });
-      }
-
-      // Hash the new password and update the user
-      const hashedPassword = await bcrypt.hash(password, 10);
-      user.password = hashedPassword;
-      user.resetPasswordToken = undefined;
-      user.resetPasswordExpires = undefined; // Clear the reset fields
-
-      await user.save();
-
-      res.status(200).json({ message: "Password reset successful" });
+    // Verify the token and ensure it's valid
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Find the user with matching id and reset token and ensure it hasn't expired
+    const user = await User.findOne({
+      _id: id,
+      resetPasswordToken: token,
+      resetPasswordExpires: { $gt: Date.now() } // Check if token is not expired
     });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
+
+    // Hash the new password and update the user
+    const hashedPassword = await bcrypt.hash(password, 10);
+    user.password = hashedPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined; // Clear the reset fields
+
+    await user.save();
+
+    res.status(200).json({ message: "Password reset successful" });
   } catch (error) {
+    if (error.name === "JsonWebTokenError" || error.name === "TokenExpiredError") {
+      return res.status(400).json({ message: "Invalid or expired token" });
+    }
     res.status(500).json({ message: error.message });
   }
 };
+
