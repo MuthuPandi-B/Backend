@@ -46,17 +46,13 @@ export const forgotPassword = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User Not Found" });
     }
+    const resetToken = crypto.randomBytes(20).toString('hex');
+    const hashedResetToken = await bcrypt.hash(resetToken, 10);
 
-    // Generate random reset token and expiration time
-    const resetToken = crypto.randomBytes(32).toString("hex");
-    const tokenExpiration = Date.now() + 3600000; // 1 hour from now
-
-    // Save token and expiration to user document
-    user.resetToken = resetToken;
-    user.tokenExpiration = tokenExpiration;
+    user.resetPasswordToken = hashedResetToken;
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour from now
     await user.save();
 
-    // Nodemailer setup
     const transporter = nodemailer.createTransport({
       service: "Gmail",
       auth: {
@@ -64,20 +60,20 @@ export const forgotPassword = async (req, res) => {
         pass: process.env.PASS_KEY,
       },
     });
-
     const mailOptions = {
       from: process.env.PASS_MAIL,
       to: user.email,
       subject: "Password Reset Link",
-      text: `You requested a password reset. Click the link to reset your password:
-      https://fsd-auth-frontend.vercel.app/reset-password/${resetToken}`
+      text: `You are receiving this because you have requested the reset of the password for your account. 
+      Please click the following link or paste it into your browser to complete the process:
+      http://localhost:5175/reset-password/${resetToken}`,
     };
-
     transporter.sendMail(mailOptions, function (error, info) {
       if (error) {
-        res.status(500).json({ message: "Error sending email" });
+        console.log(error);
+        res.status(500).json({ message: "Internal server error in sending the mail" });
       } else {
-        res.status(200).json({ message: "Email sent successfully" });
+        res.status(200).json({ message: "Email Sent Successfully" });
       }
     });
   } catch (error) {
@@ -85,22 +81,24 @@ export const forgotPassword = async (req, res) => {
   }
 };
 
-// Reset Password Controller
 export const resetPassword = async (req, res) => {
   const { resetToken } = req.params;
   const { password } = req.body;
 
   try {
     const user = await User.findOne({
-      resetToken,
-      tokenExpiration: { $gt: Date.now() }
+      resetPasswordToken: { $exists: true },
+      resetPasswordExpires: { $gt: Date.now() }
     });
     if (!user) return res.status(400).json({ message: "Invalid or expired token" });
 
+    const isMatch = await bcrypt.compare(resetToken, user.resetPasswordToken);
+    if (!isMatch) return res.status(400).json({ message: "Invalid Token" });
+
     // Update password and clear reset token
     user.password = await bcrypt.hash(password, 10);
-    user.resetToken = undefined;
-    user.tokenExpiration = undefined;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
     await user.save();
 
     res.status(200).json({ message: "Password updated successfully" });
@@ -108,5 +106,4 @@ export const resetPassword = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 
